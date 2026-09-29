@@ -4,8 +4,10 @@
 #   UP / DOWN short       -> Life: faster / slower   ·   dashboard: next / previous screen
 #   UP or DOWN long       -> switch between Game of Life and the dashboard
 #   UP + DOWN together    -> Life: new world   ·   dashboard: next screen
+#   UP + DOWN hold 2 s    -> standby (screen off); any button wakes it up
 # External button (A1 to GND, optional): short = switch, long = new world / next screen
 import gc
+import os
 import time
 import board
 import displayio
@@ -13,6 +15,7 @@ import framebufferio
 import keypad
 import rgbmatrix
 import adafruit_ticks as ticks
+import tz
 
 # ---------------------------------------------------------------- settings
 AUTO_ROTATE = True         # follow the accelerometer: turn the panel and the image turns with it
@@ -45,7 +48,26 @@ WORLD_CLOCKS = (           # max. 4; names of up to 8 letters fit best in portra
 )
 AIR_GRAPH_MINUTES = 120    # time span of the CO2 graph
 CO2_ALERT_PPM = 1200       # above this, a red dot blinks during Game of Life
+
+# Standby (screen off). Hold UP + DOWN to enter it manually; any button wakes it up.
+# The night times (automatic standby) are set in settings.toml: NIGHT_START / NIGHT_END.
+STANDBY_HOLD_MS = 2000
+NIGHT_WAKE_MINUTES = 10    # woken up at night: back to standby after this long without a button press
 # -------------------------------------------------------------------------
+
+
+
+def _clock_setting(name, default):
+    """Read "HH:MM" from settings.toml as (hour, minute); an empty value means off."""
+    text = os.getenv(name, default)
+    if not text:
+        return None
+    hour, minute = text.split(":")
+    return int(hour), int(minute)
+
+
+NIGHT_START = _clock_setting("NIGHT_START", "22:00")
+NIGHT_END = _clock_setting("NIGHT_END", "08:00")
 
 from net import Net
 from air import Air
@@ -71,34 +93,66 @@ display = framebufferio.FramebufferDisplay(
 
 
 class Buttons:
-    """Turns button presses into actions: 'switch', 'next', 'prev' and 'reset'.
+    """Turns button presses into actions: 'switch', 'next', 'prev', 'reset' and 'standby'.
 
     UP / DOWN (on the board): short = 'next' / 'prev', long = 'switch',
-    both together = 'reset'. External button: short = 'switch', long = 'reset'.
+    both together = 'reset', both held for STANDBY_HOLD_MS = 'standby'.
+    External button: short = 'switch', long = 'reset'.
     """
     EXTERNAL, UP, DOWN = 0, 1, 2
 
-    def __init__(self, pins, long_ms):
+    def __init__(self, pins, long_ms, standby_ms):
         self.keys = keypad.Keys(pins, value_when_pressed=False, pull=True)
         self.long_ms = long_ms
+        self.standby_ms = standby_ms
         self.down_since = {}  # button -> press time, or None once it has triggered an action
+        self.pressed = set()  # buttons that are physically down right now
+        self.combo_since = None  # time UP + DOWN were both pressed
+        self.combo_fired = False
+        self.muted = False  # ignore everything until all buttons are released
+        self.any_press = False  # was any button pressed during the last poll?
         self.event = keypad.Event()
+
+    def mute_until_released(self):
+        """Forget the current press (used after waking up, so it does nothing else)."""
+        self.down_since.clear()
+        self.combo_since = None
+        self.muted = bool(self.pressed)
 
     def poll(self):
         actions = []
         held = self.down_since
+        self.any_press = False
         while self.keys.events.get_into(self.event):
             k = self.event.key_number
             if self.event.pressed:
+                self.pressed.add(k)
+                self.any_press = True
+                if self.muted:
+                    continue
                 held[k] = self.event.timestamp
                 if self.UP in held and self.DOWN in held:
                     held[self.UP] = held[self.DOWN] = None
-                    actions.append("reset")
-            elif k in held:
-                if held.pop(k) is not None:  # short press
+                    self.combo_since = self.event.timestamp
+                    self.combo_fired = False
+            else:
+                self.pressed.discard(k)
+                if self.muted:
+                    held.pop(k, None)
+                    self.muted = bool(self.pressed)
+                    continue
+                if k in held and held.pop(k) is not None:  # short press
                     actions.append({self.EXTERNAL: "switch", self.UP: "next",
                                     self.DOWN: "prev"}[k])
+                if self.combo_since is not None and k in (self.UP, self.DOWN):
+                    if not self.combo_fired:  # UP + DOWN released before the standby time
+                        actions.append("reset")
+                    self.combo_since = None
         now = ticks.ticks_ms()
+        if (self.combo_since is not None and not self.combo_fired
+                and ticks.ticks_diff(now, self.combo_since) >= self.standby_ms):
+            self.combo_fired = True
+            actions.append("standby")
         for k, since in held.items():
             if since is not None and ticks.ticks_diff(now, since) >= self.long_ms:
                 held[k] = None
@@ -148,23 +202,87 @@ mode = None
 dashboard, life = build_screens(LIFE_SPEED)
 dashboard.message(("WIFI", "..."), 6)
 net.update()
-buttons = Buttons((BUTTON_PIN, board.BUTTON_UP, board.BUTTON_DOWN), LONG_PRESS_MS)
+def is_night():
+    """True during the night period, None if the time is not known (yet)."""
+    now = net.now()
+    if NIGHT_START is None or NIGHT_END is None or now is None:
+        return None
+    local = now + tz.utc_offset(now, *HOME_TZ)
+    minute = (local // 60) % 1440
+    start = NIGHT_START[0] * 60 + NIGHT_START[1]
+    end = NIGHT_END[0] * 60 + NIGHT_END[1]
+    if start <= end:
+        return start <= minute < end
+    return minute >= start or minute < end  # across midnight, e.g. 22:00 - 08:00
+
+
+def set_standby(on):
+    global standby
+    standby = on
+    if on:
+        dashboard.gifs.stop()
+        display.root_group = blank
+        display.brightness = 0  # the matrix is fully off
+        print("Standby on")
+    else:
+        display.brightness = 1
+        mode.enter()
+        print("Standby off")
+
+
+buttons = Buttons((BUTTON_PIN, board.BUTTON_UP, board.BUTTON_DOWN), LONG_PRESS_MS, STANDBY_HOLD_MS)
+blank = displayio.Group()
+standby = False
+night = is_night()
+last_activity = ticks.ticks_ms()
+next_night_check = ticks.ticks_ms()
 
 mode = dashboard if START_MODE == "dashboard" else life
 mode.enter()
+if night:
+    set_standby(True)
 
 while True:
-    for action in buttons.poll():
-        if action == "switch":
-            mode = dashboard if mode is life else life
-            mode.enter()
+    actions = buttons.poll()
+    if standby:
+        if buttons.any_press:  # any button wakes it up, and does nothing else
+            buttons.mute_until_released()
+            last_activity = ticks.ticks_ms()
+            set_standby(False)
         else:
-            mode.handle(action)
-    air.tick()
-    mode.tick()
-    if orientation:
-        new_rotation = orientation.changed()
-        if new_rotation is not None:
-            rotate(new_rotation)
-    if mode is dashboard:
+            air.tick()  # keep measuring so the CO2 graph stays complete
+    else:
+        for action in actions:
+            last_activity = ticks.ticks_ms()
+            if action == "standby":
+                set_standby(True)
+                break
+            if action == "switch":
+                mode = dashboard if mode is life else life
+                mode.enter()
+            else:
+                mode.handle(action)
+        if actions and "standby" in actions:
+            continue
+        air.tick()
+        mode.tick()
+        if orientation:
+            new_rotation = orientation.changed()
+            if new_rotation is not None:
+                rotate(new_rotation)
+
+    # Night mode: check once a second
+    now_ms = ticks.ticks_ms()
+    if not ticks.ticks_less(now_ms, next_night_check):
+        next_night_check = ticks.ticks_add(now_ms, 1000)
+        was_night, night = night, is_night()
+        if night and not was_night and not standby:          # 22:00: go to sleep
+            set_standby(True)
+        elif was_night and night is False and standby:       # 08:00: wake up
+            set_standby(False)
+        elif (night and not standby and ticks.ticks_diff(now_ms, last_activity)
+              >= NIGHT_WAKE_MINUTES * 60000):                # woken at night, left alone
+            set_standby(True)
+
+    if standby or mode is dashboard:
         time.sleep(0.01)

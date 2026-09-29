@@ -58,6 +58,8 @@ The panel works **upright (32×64) and sideways (64×32)**. The built-in acceler
    CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
    LATITUDE = "52.37"
    LONGITUDE = "4.89"
+   NIGHT_START = "22:00"   # optional night mode, "" = off
+   NIGHT_END = "08:00"
    ```
    To find your coordinates, right-click your home in Google Maps. The first number is the latitude, the second the longitude.
 
@@ -94,7 +96,22 @@ Boards from before 2021 often ship with NINA firmware 1.2.x. To update it:
 | **DOWN**, short press | slower | previous screen |
 | **UP or DOWN**, hold 0.8 s | switch to dashboard | switch to Game of Life |
 | **UP + DOWN** together | new world | next screen |
+| **UP + DOWN** hold 2 s | standby (screen off) | standby (screen off) |
+| any button in standby | wake up (the press does nothing else) | same |
 | External button on A1 | short: switch mode · long: new world / next screen | same |
+
+## Standby and night mode
+
+Hold **UP + DOWN for 2 seconds** to switch the screen off. Any button wakes it up again, and you continue where you left off. WiFi, time and the CO₂ graph are kept, and the sensor keeps measuring in standby.
+
+**Night mode** puts the screen in standby automatically, for example from 22:00 to 08:00. Set the times in `settings.toml`:
+
+```toml
+NIGHT_START = "22:00"
+NIGHT_END = "08:00"
+```
+
+Leave both empty (`""`) to turn it off. If you wake the screen up during the night, it goes back to standby after 10 minutes without a button press (`NIGHT_WAKE_MINUTES` in `code.py`). The panel uses by far the most power. In standby only the board and the WiFi chip stay on, together about 0.1 A.
 
 ## GIFs
 
@@ -160,6 +177,10 @@ Everything is at the top of [`CIRCUITPY/code.py`](CIRCUITPY/code.py):
 | `WORLD_CLOCKS` | New York, London, Tokyo, Sydney | up to 4 × `(name, UTC offset, "EU"/"US"/"AU"/None)` |
 | `AIR_GRAPH_MINUTES` | `120` | time span of the CO₂ graph |
 | `CO2_ALERT_PPM` | `1200` | red-dot threshold during Game of Life |
+| `STANDBY_HOLD_MS` | `2000` | how long to hold UP + DOWN for standby |
+| `NIGHT_WAKE_MINUTES` | `10` | woken up at night: back to standby after this long |
+
+The night times themselves (`NIGHT_START`, `NIGHT_END`) are in `settings.toml`, together with your WiFi and location.
 
 ## How it works
 

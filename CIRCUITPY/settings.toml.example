@@ -10,3 +10,8 @@ LONGITUDE = "0.0"
 
 # Timezone for the weather dates (IANA name). The clock itself uses HOME_TZ in code.py.
 TIMEZONE = "Europe/Amsterdam"
+
+# Night mode: the screen goes to standby between these times (24-hour "HH:MM").
+# Leave both empty ("") to turn the night mode off.
+NIGHT_START = "22:00"
+NIGHT_END = "08:00"
