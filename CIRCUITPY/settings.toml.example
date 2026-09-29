@@ -1,0 +1,12 @@
+# Copy this file to settings.toml on the CIRCUITPY drive and fill in your own values.
+
+# WiFi: 2.4 GHz, WPA2 (the ESP32 on the Matrix Portal M4 cannot do WPA3)
+CIRCUITPY_WIFI_SSID = "your-wifi-name"
+CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
+
+# Location for the weather (decimal degrees). Tip: right-click your home in Google Maps.
+LATITUDE = "0.0"
+LONGITUDE = "0.0"
+
+# Timezone for the weather dates (IANA name). The clock itself uses HOME_TZ in code.py.
+TIMEZONE = "Europe/Amsterdam"
