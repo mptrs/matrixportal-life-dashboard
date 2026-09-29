@@ -1,15 +1,15 @@
-# tz.py - tijdzones met zomertijd, zonder internet.
-# Een zone is (standaard UTC-offset in uren, zomertijdregel):
-#   "EU" - laatste zondag maart t/m laatste zondag oktober, 01:00 UTC (Amsterdam, Londen, ...)
-#   "US" - tweede zondag maart t/m eerste zondag november, 02:00 lokaal
-#   "AU" - eerste zondag oktober t/m eerste zondag april (Sydney, Melbourne)
-#   None - geen zomertijd (Tokio, Singapore, Dubai, ...)
+# tz.py - timezones with daylight saving time, no internet needed.
+# A zone is (standard UTC offset in hours, DST rule):
+#   "EU" - last Sunday of March to last Sunday of October, 01:00 UTC (Amsterdam, London, ...)
+#   "US" - second Sunday of March to first Sunday of November, 02:00 local time
+#   "AU" - first Sunday of October to first Sunday of April (Sydney, Melbourne)
+#   None - no daylight saving time (Tokyo, Singapore, Dubai, ...)
 
 _DIM = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
 
 def weekday(y, m, d):
-    """0 = maandag."""
+    """0 = Monday."""
     t = (0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4)
     if m < 3:
         y -= 1
@@ -17,7 +17,7 @@ def weekday(y, m, d):
 
 
 def _days(y, m, d):
-    """Dagen sinds 1-1-1970."""
+    """Days since 1970-01-01."""
     y -= m <= 2
     era = y // 400
     yoe = y - era * 400
@@ -30,7 +30,7 @@ def _wall(y, m, d, hour):
 
 
 def _sunday(y, m, n):
-    """De n-de zondag van de maand, of de laatste bij n = -1."""
+    """The n-th Sunday of the month, or the last one for n = -1."""
     first = 1 + (6 - weekday(y, m, 1)) % 7
     if n > 0:
         return first + 7 * (n - 1)
@@ -38,12 +38,12 @@ def _sunday(y, m, n):
 
 
 def utc_offset(unix, std_hours, rule=None):
-    """Offset in seconden t.o.v. UTC op tijdstip unix (UTC)."""
+    """Offset from UTC in seconds at the given unix time (UTC)."""
     std = int(std_hours * 3600)
     if rule is None:
         return std
-    # Rond jaarwisseling kan dit jaartal een dag afwijken; dan is het zomertijd-antwoord
-    # in beide jaren hetzelfde, dus dat maakt niet uit.
+    # Around New Year this year can be off by a day; the DST answer is the same in both
+    # years then, so that does not matter.
     y = 1970 + (unix // 86400) * 400 // 146097
     if rule == "EU":
         dst = _wall(y, 3, _sunday(y, 3, -1), 1) <= unix < _wall(y, 10, _sunday(y, 10, -1), 1)

@@ -17,8 +17,6 @@ The panel works **upright (32×64) and sideways (64×32)**. The built-in acceler
 
 ![Sideways screens](docs/screens-landscape.png)
 
-> The screen text is in Dutch (MA = Monday, REGEN = rain, …). All the labels are in [`dashboard.py`](CIRCUITPY/dashboard.py) if you want to translate them.
-
 ## Features
 
 - **Game of Life** on a wrap-around (toroidal) world, with 4 color themes and 6 speeds.
@@ -53,7 +51,7 @@ The panel works **upright (32×64) and sideways (64×32)**. The built-in acceler
    - `adafruit_ticks.mpy`
    - `adafruit_scd30.mpy` (CO₂ sensor)
    - `adafruit_lis3dh.mpy` (accelerometer)
-3. **Copy the contents of [`CIRCUITPY/`](CIRCUITPY/)** from this repo to the drive. That's all the `.py` files, `gifs/` and `gifs_staand/`.
+3. **Copy the contents of [`CIRCUITPY/`](CIRCUITPY/)** from this repo to the drive. That's all the `.py` files, `gifs_landscape/` and `gifs_portrait/`.
 4. **Create your settings.** Copy `settings.toml.example` to `settings.toml` on the drive and fill in your WiFi and location:
    ```toml
    CIRCUITPY_WIFI_SSID = "your-wifi-name"
@@ -106,8 +104,8 @@ There are two folders on the drive:
 
 | Folder | Size | Used when the panel is |
 |---|---|---|
-| `gifs/` | 64×32 | sideways |
-| `gifs_staand/` | 32×64 | upright (*staand* = upright) |
+| `gifs_landscape/` | 64×32 | sideways |
+| `gifs_portrait/` | 32×64 | upright |
 
 Because the panel rotates automatically, put each GIF in **both** folders. Otherwise it only shows up in one orientation.
 
@@ -117,9 +115,9 @@ You need Python 3 and Pillow (`pip install pillow`):
 
 ```bash
 # sideways
-python3 tools/gif2bmp.py cat.gif -o /Volumes/CIRCUITPY/gifs
+python3 tools/gif2bmp.py cat.gif -o /Volumes/CIRCUITPY/gifs_landscape
 # upright
-python3 tools/gif2bmp.py --staand cat.gif -o /Volumes/CIRCUITPY/gifs_staand
+python3 tools/gif2bmp.py --portrait cat.gif -o /Volumes/CIRCUITPY/gifs_portrait
 ```
 
 Useful options (try a few, the best choice depends on the GIF):
@@ -127,18 +125,18 @@ Useful options (try a few, the best choice depends on the GIF):
 | Option | What it does |
 |---|---|
 | `--fit cover` | fill the whole screen and crop, instead of black bars |
-| `--bg rand` | fill the bars with the GIF's own background color |
-| `--rand-zwart` | make a (white) background black. White is harsh on LEDs. |
+| `--bg edge` | fill the bars with the GIF's own background color |
+| `--black-bg` | make a (white) background black. White is harsh on LEDs. |
 | `--trim` | cut away empty space around the subject so it gets bigger |
-| `--scherp` | sharp nearest-neighbor scaling, for pixel art |
+| `--sharp` | sharp nearest-neighbor scaling, for pixel art |
 | `--split` | wide image on an upright panel: put the left half above the right half |
-| `--naam NAME` | output file name |
+| `--name NAME` | output file name |
 
 GIFs with more than 90 frames are thinned out automatically (every 2nd or 3rd frame), so the whole animation still fits. Aim for a few hundred KB per folder in total, because the drive has about 1.4 MB free.
 
 ### Removing a GIF
 
-Delete the `.bmp` from `gifs/` and `gifs_staand/` on the CIRCUITPY drive. The board restarts and the GIF is gone from the rotation.
+Delete the `.bmp` from `gifs_landscape/` and `gifs_portrait/` on the CIRCUITPY drive. The board restarts and the GIF is gone from the rotation.
 
 ### Demo GIFs
 

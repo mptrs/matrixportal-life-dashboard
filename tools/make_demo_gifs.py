@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Maakt de demo-GIFs (Pac-Man-achtige achtervolging en een plasma) in beide standen.
+"""Creates the demo GIFs (a Pac-Man-like chase and a plasma) in both orientations.
 
-Gebruik:  python3 tools/make_demo_gifs.py
-Schrijft demo-*.bmp naar CIRCUITPY/gifs (liggend) en CIRCUITPY/gifs_staand (staand).
+Usage:  python3 tools/make_demo_gifs.py
+Writes demo-*.bmp to CIRCUITPY/gifs_landscape and CIRCUITPY/gifs_portrait.
 """
 import colorsys
 import math
@@ -34,7 +34,7 @@ def plasma(w, h):
 
 
 def chase(w, h):
-    """Geel rondje met open mond, achtervolgd door een rood spookje."""
+    """Yellow circle with an open mouth, chased by a red ghost."""
     horizontal = w > h
     length = w if horizontal else h
     mid = (h if horizontal else w) // 2
@@ -47,7 +47,7 @@ def chase(w, h):
         def xy(along, across):
             return (along, across) if horizontal else (across, along)
 
-        for i in range(8):  # bolletjes die nog opgegeten moeten worden
+        for i in range(8):  # dots still waiting to be eaten
             p = i * 9 + 4 - (f * 2) % 9
             if p > pos + 8:
                 x, y = xy(p, mid - 1)
@@ -71,17 +71,17 @@ def chase(w, h):
 
 def main():
     with tempfile.TemporaryDirectory() as tmp:
-        for folder, (w, h), staand in (("gifs", (64, 32), False), ("gifs_staand", (32, 64), True)):
+        for folder, (w, h) in (("gifs_landscape", (64, 32)), ("gifs_portrait", (32, 64))):
             out = ROOT / folder
             out.mkdir(parents=True, exist_ok=True)
             for name, make in (("demo-chase", chase), ("demo-plasma", plasma)):
                 frames, delay = make(w, h)
                 src = Path(tmp) / f"{name}.gif"
                 frames[0].save(src, save_all=True, append_images=frames[1:], duration=delay, loop=0)
-                opt = SimpleNamespace(out=out, fit="contain", bg="zwart", rand_zwart=False,
-                                      split=False, scherp=True, trim=False, naam=name,
+                opt = SimpleNamespace(out=out, fit="contain", bg="black", black_bg=False,
+                                      split=False, sharp=True, trim=False, name=name,
                                       colors=128, max_frames=90)
-                gif2bmp.convert(src, *((32, 64) if staand else (64, 32)), opt)
+                gif2bmp.convert(src, w, h, opt)
 
 
 if __name__ == "__main__":

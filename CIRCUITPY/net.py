@@ -1,4 +1,4 @@
-# net.py - wifi via de ESP32-coprocessor, tijd (NTP) en weer (Open-Meteo, geen API-key nodig)
+# net.py - WiFi via the ESP32 co-processor, time (NTP) and weather (Open-Meteo, no API key needed)
 import os
 import time
 import board
@@ -8,7 +8,7 @@ from adafruit_esp32spi import adafruit_esp32spi
 import adafruit_connection_manager
 import adafruit_requests
 
-WEATHER_EVERY = 15 * 60  # seconden
+WEATHER_EVERY = 15 * 60  # seconds
 TIME_EVERY = 6 * 60 * 60
 RETRY_AFTER = 60
 
@@ -44,14 +44,14 @@ class Net:
         self._tried_at = None
         self._failures = 0
 
-    # ---- tijd
+    # ---- time
     def now(self):
-        """Unix-tijd (UTC) of None als de klok nog niet gesynct is."""
+        """Unix time (UTC), or None if the clock has not been synced yet."""
         if self._unix is None:
             return None
         return self._unix + (time.monotonic_ns() - self._unix_ns) // 1000000000
 
-    # ---- verversen
+    # ---- refreshing
     def stale(self):
         t = _secs()
         if self._tried_at is not None and t - self._tried_at < RETRY_AFTER:
@@ -71,18 +71,18 @@ class Net:
     def _connect(self):
         try:
             if not self.esp.is_connected:
-                print("Verbinden met", self.ssid)
+                print("Connecting to", self.ssid)
                 self.esp.connect_AP(self.ssid, self.password)
             return True
-        except Exception as e:  # noqa - op een klok willen we nooit crashen
-            print("Wifi mislukt:", e)
+        except Exception as e:  # noqa - a clock should never crash
+            print("WiFi failed:", e)
             self._failed()
             return False
 
     def _failed(self):
         self._failures += 1
         if self._failures >= 3:
-            print("ESP32 resetten")
+            print("Resetting ESP32")
             self.esp.reset()
             self._failures = 0
 
@@ -96,12 +96,12 @@ class Net:
                     self._unix = t
                     self._unix_ns = time.monotonic_ns()
                     self._time_at = _secs()
-                    print("Tijd gesynct:", t)
+                    print("Time synced:", t)
                     return
             except Exception as e:  # noqa
-                print("Tijd nog niet beschikbaar:", e)
+                print("Time not available yet:", e)
             time.sleep(1)
-        print("Tijd synchroniseren mislukt, straks opnieuw")
+        print("Time sync failed, will retry later")
 
     def _fetch_weather(self):
         try:
@@ -127,7 +127,7 @@ class Net:
             }
             self._weather_at = _secs()
             self._failures = 0
-            print("Weer bijgewerkt:", self.weather["temp"], "graden")
+            print("Weather updated:", self.weather["temp"], "degrees")
         except Exception as e:  # noqa
-            print("Weer ophalen mislukt:", e)
+            print("Weather fetch failed:", e)
             self._failed()

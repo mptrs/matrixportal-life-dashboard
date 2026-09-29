@@ -1,5 +1,5 @@
-# dashboard.py - roterend dashboard: klok + maan, binnenlucht, weer, verwachting,
-# wereldklokken en GIFs. Elk scherm heeft een liggende (64x32) en staande (32x64) indeling.
+# dashboard.py - rotating dashboard: clock + moon, indoor air, weather, forecast,
+# world clocks and GIFs. Every screen has a landscape (64x32) and a portrait (32x64) layout.
 import os
 import time
 import displayio
@@ -7,9 +7,9 @@ import adafruit_ticks as ticks
 import gfx
 import tz
 
-DAYS = ("MA", "DI", "WO", "DO", "VR", "ZA", "ZO")
-MONTHS = ("JAN", "FEB", "MRT", "APR", "MEI", "JUN", "JUL", "AUG", "SEP", "OKT", "NOV", "DEC")
-RIGHT_CX = 46  # liggend: midden van het tekstvak rechts van de maan / het icoon
+DAYS = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
+MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+RIGHT_CX = 46  # landscape: center of the text area right of the moon / icon
 
 
 def _deg(value):
@@ -33,8 +33,8 @@ def co2_color(ppm):
 
 
 class GifPlayer:
-    """Speelt sprite sheets af: BMP's met alle frames onder elkaar.
-    De frametijd staat in de bestandsnaam, bv. 'nyan_d80.bmp' = 80 ms per frame."""
+    """Plays sprite sheets: BMPs with all frames stacked vertically.
+    The frame time is in the file name, e.g. 'nyan_d80.bmp' = 80 ms per frame."""
 
     def __init__(self, folder, w, h, brightness):
         self.folder = folder
@@ -62,7 +62,7 @@ class GifPlayer:
                 pass
         bmp = displayio.OnDiskBitmap(self.folder + "/" + name)
         if bmp.width != self.w:
-            raise ValueError("%s is %d breed, verwacht %d" % (name, bmp.width, self.w))
+            raise ValueError("%s is %d wide, expected %d" % (name, bmp.width, self.w))
         shader = bmp.pixel_shader
         if isinstance(shader, displayio.Palette):
             for i in range(len(shader)):
@@ -120,14 +120,14 @@ class Dashboard:
         self.started = ticks.ticks_ms()
         self._last_sec = self._last_min = self._sun_shown = self._air_shown = None
 
-    # ---- besturing vanuit code.py
+    # ---- controlled from code.py
     def enter(self):
         self._show()
 
     def handle(self, action):
-        if action == "prev":        # DOWN: vorig scherm
+        if action == "prev":        # DOWN: previous screen
             self._advance(-1)
-        else:                       # UP of beide knoppen: volgend scherm
+        else:                       # UP or both buttons: next screen
             self._advance()
 
     def tick(self):
@@ -135,7 +135,7 @@ class Dashboard:
         limit = self.durations.get(self.current, 10) * 1000
         if self.current == "gif":
             self.gifs.tick()
-            # Laat een GIF minstens één keer helemaal uitspelen, maar niet eindeloos
+            # Let a GIF play completely at least once, but not forever
             if (self.gifs.loops and elapsed >= limit) or elapsed >= 2 * limit:
                 self._advance()
             return
@@ -163,7 +163,7 @@ class Dashboard:
         now = self.net.now()
         return None if now is None else now + tz.utc_offset(now, *self.home_tz)
 
-    # ---- schermen
+    # ---- screens
     def _advance(self, step=1):
         self.index = (self.index + step) % len(self.order)
         self._show()
@@ -178,13 +178,13 @@ class Dashboard:
                 self.gifs.start()
                 self.display.root_group = self.gifs.group
                 return
-            except Exception as e:  # noqa - kapotte of verkeerd gedraaide BMP: sla over
-                print("GIF mislukt:", e)
+            except Exception as e:  # noqa - broken or wrongly oriented BMP: skip it
+                print("GIF failed:", e)
                 self.current = "clock"
         self.display.root_group = self.group
         self._draw()
         if self.net.stale():
-            self.net.update()  # kan een paar seconden duren
+            self.net.update()  # may take a few seconds
             self._draw()
 
     def _draw(self):
@@ -199,12 +199,12 @@ class Dashboard:
         elif self.current == "world":
             self._draw_world()
 
-    # ---- klok + maan
+    # ---- clock + moon
     def _draw_clock(self, full):
         local = self.local_now()
         if local is None:
             if full:
-                self.message(("KLOK", "NIET", "GESYNCT"), gfx.GREY)
+                self.message(("CLOCK", "NOT", "SYNCED"), gfx.GREY)
             return
         sec = local % 60
         if not full and sec == self._last_sec:
@@ -233,7 +233,7 @@ class Dashboard:
                 T(c, date, RIGHT_CX, 15, gfx.GREY)
             self._sun_shown = None
 
-        # Elke seconde: knipperende dubbele punt
+        # Every second: blinking colon
         colon = gfx.GREY if sec % 2 == 0 else gfx.BLACK
         if self.portrait:
             c[15, 33] = c[16, 33] = colon
@@ -241,7 +241,7 @@ class Dashboard:
         gfx.fill_rect(c, 28, 2, 36, 10, 0)
         gfx.draw_parts(c, (("%02d" % lt.tm_hour, gfx.WHITE), (":", colon),
                            ("%02d" % lt.tm_min, gfx.WHITE)), RIGHT_CX, 2, 2)
-        # Liggend is er plek voor één regel: zon op / onder wisselt elke 4 seconden
+        # Landscape has room for one line: sunrise / sunset alternate every 4 seconds
         which = (sec // 4) % 2
         if w and which != self._sun_shown:
             self._sun_shown = which
@@ -252,11 +252,11 @@ class Dashboard:
             else:
                 T(c, "↓" + d0["sunset"], RIGHT_CX, 24, gfx.ORANGE)
 
-    # ---- weer vandaag
+    # ---- today's weather
     def _draw_weather(self):
         w = self.net.weather
         if not w:
-            self.message(("GEEN", "WEERDATA"), gfx.GREY)
+            self.message(("NO", "WEATHER", "DATA"), gfx.GREY)
             return
         c = self.canvas
         c.fill(0)
@@ -272,25 +272,25 @@ class Dashboard:
             gfx.draw_parts(c, minmax, 16, 42)
             if rain:
                 self._dots_h(49)
-                gfx.draw_text_centered(c, "REGEN", 16, 52, gfx.GREY)
+                gfx.draw_text_centered(c, "RAIN", 16, 52, gfx.GREY)
                 gfx.draw_text_centered(c, rain, 16, 58, gfx.LIGHTBLUE)
         else:
             gfx.draw_icon(c, kind, 1, 4, 2, night=not w["is_day"])
             self._big_temp(temp, RIGHT_CX, 2)
             gfx.draw_parts(c, minmax, RIGHT_CX, 15)
             if rain:
-                gfx.draw_parts(c, (("REGEN ", gfx.GREY), (rain, gfx.LIGHTBLUE)), RIGHT_CX, 24)
+                gfx.draw_parts(c, (("RAIN ", gfx.GREY), (rain, gfx.LIGHTBLUE)), RIGHT_CX, 24)
 
     def _big_temp(self, temp, cx, y):
         x = cx - (gfx.text_width(temp, 2) + 5) // 2
         x = gfx.draw_text(self.canvas, temp, x, y, gfx.WHITE, 2)
         gfx.draw_text(self.canvas, "°", x, y, gfx.WHITE)
 
-    # ---- verwachting komende 3 dagen
+    # ---- forecast for the next 3 days
     def _draw_forecast(self):
         w = self.net.weather
         if not w:
-            self.message(("GEEN", "WEERDATA"), gfx.GREY)
+            self.message(("NO", "WEATHER", "DATA"), gfx.GREY)
             return
         c = self.canvas
         c.fill(0)
@@ -317,12 +317,12 @@ class Dashboard:
                     for yy in range(2, 30, 2):
                         c[cx + 10, yy] = gfx.DARKGREY
 
-    # ---- binnenlucht (SCD-30)
+    # ---- indoor air (SCD-30)
     def _draw_air(self):
         a = self.air
         self._air_shown = a.co2
         if a.co2 is None:
-            self.message(("CO2", "OPWARMEN"), gfx.GREY)
+            self.message(("CO2", "WARMING", "UP"), gfx.GREY)
             return
         c = self.canvas
         c.fill(0)
@@ -344,7 +344,7 @@ class Dashboard:
             self._graph(a.history, 15)
 
     def _graph(self, history, top):
-        """Staafjes van `top` tot de onderrand: 400..2000 ppm, stippellijn bij 800 en 1200."""
+        """Bars from `top` to the bottom edge: 400..2000 ppm, dotted lines at 800 and 1200."""
         c = self.canvas
         rows = self.h - top
 
@@ -361,11 +361,11 @@ class Dashboard:
             for y in range(self.h - height(v), self.h):
                 c[start + i, y] = color
 
-    # ---- wereldklokken
+    # ---- world clocks
     def _draw_world(self):
         now = self.net.now()
         if now is None:
-            self.message(("KLOK", "NIET", "GESYNCT"), gfx.GREY)
+            self.message(("CLOCK", "NOT", "SYNCED"), gfx.GREY)
             return
         self._last_min = now // 60
         c = self.canvas
@@ -377,7 +377,7 @@ class Dashboard:
             clock = "%02d:%02d" % (lt.tm_hour, lt.tm_min)
             diff = local // 86400 - home_day
             day = "+1" if diff > 0 else "-1" if diff < 0 else ""
-            sun = gfx.YELLOW if 7 <= lt.tm_hour < 19 else gfx.BLUE  # dag of nacht daar
+            sun = gfx.YELLOW if 7 <= lt.tm_hour < 19 else gfx.BLUE  # day or night over there
             if self.portrait:
                 top = i * 16
                 gfx.draw_text_centered(c, _fit(name, 32), 16, top + 1, gfx.GREY)

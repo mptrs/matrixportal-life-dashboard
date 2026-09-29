@@ -1,5 +1,5 @@
-# life.py - Conway's Game of Life (64x32 liggend of 32x64 staand). De wereld "wikkelt" rond (torus):
-# wat rechts verdwijnt, komt links terug.
+# life.py - Conway's Game of Life (64x32 landscape or 32x64 portrait). The world wraps around
+# (a torus): whatever leaves on the right comes back on the left.
 import os
 from binascii import crc32
 import displayio
@@ -7,16 +7,16 @@ import bitmaptools
 import adafruit_ticks as ticks
 import gfx
 
-STALE_GENS = 40  # zo lang tonen we een vastgelopen eindstand voor we opnieuw beginnen
-# Zoveel generaties onthouden we om herhaling te herkennen. Een glider doet op dit
-# rondlopende scherm 256 generaties over één rondje, dus 1024 vangt ook combinaties.
+STALE_GENS = 40  # how long a finished world stays on screen before a new one starts
+# Number of generations remembered to detect repetition. On this wrap-around screen a
+# glider needs 256 generations for one lap, so 1024 also catches combinations.
 HISTORY = 1024
-SPEED_BAR_MS = 1500  # zo lang blijft het snelheidsbalkje onderin zichtbaar
+SPEED_BAR_MS = 1500  # how long the speed bar at the bottom stays visible
 
-# Kleurindex: 0 = dood, 1 = net geboren, 2..6 = steeds ouder, 7 = net gestorven (spoor)
+# Color index: 0 = dead, 1 = just born, 2..6 = older and older, 7 = just died (trail)
 THEMES = (
-    (0x000000, 0xFFFFFF, 0x60E0FF, 0x20A0FF, 0x1060E0, 0x0830B0, 0x041C80, 0x101828),  # oceaan
-    (0x000000, 0xFFFFA0, 0xFFD000, 0xFF9000, 0xFF5000, 0xD02000, 0x901000, 0x281000),  # vuur
+    (0x000000, 0xFFFFFF, 0x60E0FF, 0x20A0FF, 0x1060E0, 0x0830B0, 0x041C80, 0x101828),  # ocean
+    (0x000000, 0xFFFFA0, 0xFFD000, 0xFF9000, 0xFF5000, 0xD02000, 0x901000, 0x281000),  # fire
     (0x000000, 0xD0FFD0, 0x40FF40, 0x10D010, 0x08A008, 0x047004, 0x024802, 0x0C200C),  # matrix
     (0x000000, 0xFFFFFF, 0xFF40C0, 0xC040FF, 0x7040FF, 0x4060FF, 0x2080C0, 0x200C28),  # neon
 )
@@ -30,7 +30,7 @@ class Life:
         self.air = air
         self.alert_ppm = alert_ppm
         self.brightness = brightness
-        self.speeds_ms = speeds_ms  # tijd per generatie, snelste eerst
+        self.speeds_ms = speeds_ms  # time per generation, fastest first
         self.speed = speed
         self.max_gens = max_gens
         self.density = density
@@ -38,14 +38,14 @@ class Life:
         self.palette = displayio.Palette(8)
         self.group = displayio.Group()
         self.group.append(displayio.TileGrid(self.bitmap, pixel_shader=self.palette))
-        # Knipperend rood puntje rechtsboven als de CO2 te hoog is
+        # Blinking red dot in the top right corner when CO2 is too high
         dot = displayio.Bitmap(2, 2, 1)
         dot_palette = displayio.Palette(1)
         dot_palette[0] = gfx.scale(0xFF0000, max(brightness, 0.5))
         self.dot = displayio.TileGrid(dot, pixel_shader=dot_palette, x=self.w - 2, y=0)
         self.dot.hidden = True
         self.group.append(self.dot)
-        # Snelheidsbalkje onderin, even zichtbaar na UP/DOWN
+        # Speed bar at the bottom, briefly shown after UP/DOWN
         self.bar = displayio.Bitmap(self.w, 1, 2)
         bar_palette = displayio.Palette(2)
         bar_palette.make_transparent(0)
@@ -58,7 +58,7 @@ class Life:
         self.cur = bytearray(n)
         self.nxt = bytearray(n)
         self.age = bytearray(n)
-        self.history = [-1] * HISTORY  # ringbuffer met hashes van eerdere standen
+        self.history = [-1] * HISTORY  # ring buffer with fingerprints of earlier states
         self.theme = -1
         self.reset()
 
@@ -67,9 +67,9 @@ class Life:
         self.next_at = ticks.ticks_ms()
 
     def handle(self, action):
-        if action == "next":        # UP: sneller
+        if action == "next":        # UP: faster
             self._set_speed(self.speed - 1)
-        elif action == "prev":      # DOWN: langzamer
+        elif action == "prev":      # DOWN: slower
             self._set_speed(self.speed + 1)
         elif action == "reset":
             self.reset()
@@ -83,10 +83,10 @@ class Life:
         self.bar_tile.hidden = False
         self.bar_until = ticks.ticks_add(ticks.ticks_ms(), SPEED_BAR_MS)
         self.next_at = ticks.ticks_ms()
-        print("Life-snelheid:", self.speeds_ms[self.speed], "ms")
+        print("Life speed:", self.speeds_ms[self.speed], "ms")
 
     def reset(self):
-        """Nieuwe willekeurige wereld, met het volgende kleurthema."""
+        """New random world, with the next color theme."""
         self.theme = (self.theme + 1) % len(THEMES)
         for i, color in enumerate(THEMES[self.theme]):
             self.palette[i] = gfx.scale(color, self.brightness)
@@ -118,12 +118,12 @@ class Life:
         bitmaptools.arrayblit(self.bitmap, self.age)
         self.gen += 1
 
-        # Klaar? Als de hele wereld precies zo staat als eerder, herhaalt alles zich vanaf
-        # nu eindeloos. We onthouden een vingerafdruk (CRC32) per stand; hash() is daar in
-        # CircuitPython niet geschikt voor (geeft voor elke wereld hetzelfde getal).
-        # Pas als het STALE_GENS keer achter elkaar klopt, is het een echte herhaling en
-        # geen toevallig gelijke vingerafdruk.
-        h = crc32(self.cur) & 0x3FFFFFFF  # klein getal: kost geen extra geheugen
+        # Finished? Once the whole world is exactly as it was before, everything repeats
+        # forever from then on. We keep a fingerprint (CRC32) per state; hash() is no good
+        # for this on CircuitPython (it returns the same value for every world).
+        # Only when it matches STALE_GENS times in a row is it a real repetition and not
+        # an accidental fingerprint collision.
+        h = crc32(self.cur) & 0x3FFFFFFF  # small int: costs no extra memory
         if h in self.history:
             self.stale += 1
         else:
@@ -140,21 +140,21 @@ class Life:
             row = y * W
             up = ((y - 1) % H) * W
             dn = ((y + 1) % H) * W
-            # Som per kolom over 3 rijen, met links/rechts de overkant erbij
+            # Sum per column over 3 rows, with the opposite edges wrapped in left/right
             cs = [a + b + c for a, b, c in zip(cur[up:up + W], cur[row:row + W], cur[dn:dn + W])]
             cs = [cs[-1]] + cs + [cs[0]]
             for x in range(W):
                 i = row + x
-                s = cs[x] + cs[x + 1] + cs[x + 2]  # 3x3-blok inclusief de cel zelf
+                s = cs[x] + cs[x + 1] + cs[x + 2]  # 3x3 block including the cell itself
                 if cur[i]:
-                    if s == 3 or s == 4:  # 2 of 3 buren: blijft leven
+                    if s == 3 or s == 4:  # 2 or 3 neighbors: stays alive
                         nxt[i] = 1
                         if age[i] < 6:
                             age[i] += 1
                     else:
                         nxt[i] = 0
                         age[i] = 7
-                elif s == 3:  # precies 3 buren: geboren
+                elif s == 3:  # exactly 3 neighbors: born
                     nxt[i] = 1
                     age[i] = 1
                 else:

@@ -1,8 +1,8 @@
-# gfx.py - kleuren, mini-lettertype (3x5), weer-iconen en de maan.
-# Bevat bewust geen displayio: alles tekent op een "bitmap" met bmp[x, y] = kleurindex.
+# gfx.py - colors, a tiny 3x5 font, weather icons and the moon.
+# Deliberately has no displayio: everything draws on a "bitmap" with bmp[x, y] = color index.
 import math
 
-# Kleurindexen van het dashboard-canvas
+# Color indexes of the dashboard canvas
 (BLACK, WHITE, GREY, YELLOW, ORANGE, BLUE, LIGHTBLUE, CLOUD,
  DARKGREY, RED, GREEN, MOON, MOON_DARK, MOON_SHADE, CYAN, DIM) = range(16)
 
@@ -27,7 +27,7 @@ COLORS = (
 
 
 def scale(color, amount):
-    """Maak een 0xRRGGBB-kleur donkerder (amount 0..1)."""
+    """Dim a 0xRRGGBB color (amount 0..1)."""
     r = int(((color >> 16) & 0xFF) * amount)
     g = int(((color >> 8) & 0xFF) * amount)
     b = int((color & 0xFF) * amount)
@@ -42,8 +42,8 @@ def fill_rect(bmp, x, y, w, h, color):
             bmp[xx, yy] = color
 
 
-# ---------------------------------------------------------------- lettertype
-# Per teken: het teken zelf + 15 bits (5 rijen van 3 pixels, linksboven eerst).
+# ---------------------------------------------------------------------- font
+# Per glyph: the character itself + 15 bits (5 rows of 3 pixels, top left first).
 _FONT_DATA = (
     "0111101101101111", "1010110010010111", "2111001111100111", "3111001111001111",
     "4101101111001001", "5111100111001111", "6111100111101111", "7111001010010010",
@@ -60,7 +60,7 @@ _FONT_DATA = (
     "!010010010000010", "?110001010000010", "↑010111010010010", "↓010010010111010",
 )
 FONT = {s[0]: int(s[1:], 2) for s in _FONT_DATA}
-# Smalle tekens (alleen de middelste kolom wordt gebruikt)
+# Narrow glyphs (only the middle column is used)
 _ADVANCE = {" ": 2, ":": 2, ".": 2, "!": 2}
 
 
@@ -71,7 +71,7 @@ def text_width(text, scale_=1):
 
 
 def draw_text(bmp, text, x, y, color, scale_=1):
-    """Teken tekst met linkerbovenhoek op (x, y). Geeft de x na de tekst terug."""
+    """Draw text with its top left corner at (x, y). Returns the x after the text."""
     for ch in text:
         adv = _ADVANCE.get(ch, 4)
         bits = FONT.get(ch) or FONT.get(ch.upper())
@@ -90,14 +90,14 @@ def draw_text_centered(bmp, text, cx, y, color, scale_=1):
 
 
 def draw_parts(bmp, parts, cx, y, scale_=1):
-    """Tekst in meerdere kleuren, gecentreerd: parts = ((tekst, kleur), ...)."""
+    """Centered text in several colors: parts = ((text, color), ...)."""
     x = cx - text_width("".join(p[0] for p in parts), scale_) // 2
     for text, color in parts:
         x = draw_text(bmp, text, x, y, color, scale_)
 
 
-# ------------------------------------------------------------------ iconen
-# Lagen van 12x12; '.' is transparant. Een icoon is een stapel lagen met offset.
+# --------------------------------------------------------------------- icons
+# 12x12 layers; '.' is transparent. An icon is a stack of layers with offsets.
 _LAYERS = {
     "sun": (
         ".....YY.....",
@@ -188,7 +188,7 @@ _CHAR_COLORS = {"Y": YELLOW, "O": ORANGE, "W": WHITE, "G": CLOUD, "L": LIGHTBLUE
 _GREY_CLOUD = {"W": CLOUD, "G": GREY}
 _STORM_CLOUD = {"W": GREY, "G": DARKGREY}
 
-# (laag, dx, dy, kleurvervanging)
+# (layer, dx, dy, color replacement)
 _RECIPES = {
     "clear": (("sun", 0, 0, None),),
     "partly": (("sun", -1, -1, None), ("cloud", 1, 4, None)),
@@ -201,7 +201,7 @@ _RECIPES = {
 
 
 def weather_kind(code):
-    """WMO-weercode (Open-Meteo) -> icoonnaam."""
+    """WMO weather code (Open-Meteo) -> icon name."""
     if code <= 1:
         return "clear"
     if code == 2:
@@ -233,22 +233,22 @@ def draw_icon(bmp, kind, x, y, scale_=1, night=False):
                 fill_rect(bmp, x + xx * scale_, y + yy * scale_, scale_, scale_, color)
 
 
-# -------------------------------------------------------------------- maan
-_NEW_MOON = 947182440  # 6 jan 2000 18:14 UTC, een bekende nieuwe maan
+# ---------------------------------------------------------------------- moon
+_NEW_MOON = 947182440  # 6 Jan 2000 18:14 UTC, a known new moon
 _SYNODIC = 29.530588853
-# Een paar "zeeën" op de maan (x, y, straal), genormaliseerd op -1..1
+# A few "seas" on the moon (x, y, radius), normalized to -1..1
 _CRATERS = ((-0.35, -0.25, 0.24), (0.25, 0.2, 0.18), (-0.1, 0.5, 0.15),
             (0.35, -0.4, 0.12), (-0.5, 0.2, 0.1))
 
 
 def moon_phase(unix_utc):
-    """0 = nieuwe maan, 0.25 = eerste kwartier, 0.5 = vol, 0.75 = laatste kwartier."""
+    """0 = new moon, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter."""
     days = (unix_utc - _NEW_MOON) / 86400
     return (days % _SYNODIC) / _SYNODIC
 
 
 def draw_moon(bmp, cx, cy, r, phase):
-    """Maan met straal r; pixels cx-r .. cx+r-1. Wassend = rechts verlicht (NL)."""
+    """Moon with radius r; pixels cx-r .. cx+r-1. Waxing = lit on the right (northern hemisphere)."""
     k = math.cos(2 * math.pi * phase)
     waxing = phase < 0.5
     for py in range(-r, r):

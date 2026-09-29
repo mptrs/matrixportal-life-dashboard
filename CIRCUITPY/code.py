@@ -1,10 +1,10 @@
-# Matrix Portal M4 + 64x32 matrix (liggend of staand): Game of Life  <->  roterend dashboard
+# Matrix Portal M4 + 64x32 matrix (landscape or portrait): Game of Life  <->  rotating dashboard
 #
-# Knoppen op het bordje:
-#   UP / DOWN kort        -> Life: sneller / langzamer   ·   dashboard: volgend / vorig scherm
-#   UP of DOWN lang       -> wissel tussen Game of Life en dashboard
-#   UP + DOWN tegelijk    -> Life: nieuwe wereld   ·   dashboard: volgend scherm
-# Externe knop (A1 naar GND, optioneel): kort = wisselen, lang = nieuwe wereld / volgend scherm
+# Buttons on the board:
+#   UP / DOWN short       -> Life: faster / slower   ·   dashboard: next / previous screen
+#   UP or DOWN long       -> switch between Game of Life and the dashboard
+#   UP + DOWN together    -> Life: new world   ·   dashboard: next screen
+# External button (A1 to GND, optional): short = switch, long = new world / next screen
 import gc
 import time
 import board
@@ -14,37 +14,37 @@ import keypad
 import rgbmatrix
 import adafruit_ticks as ticks
 
-# ------------------------------------------------------------ instellingen
-AUTO_ROTATE = True         # stand bepalen met de accelerometer; draai je het paneel, dan draait het beeld mee
-# Vaste stand, als AUTO_ROTATE uit staat of het paneel plat ligt:
-PORTRAIT = True            # True = staand (32 breed, 64 hoog), False = liggend (64x32)
-FLIP = True                # True als het beeld op z'n kop staat (True = bordje onderaan)
-BRIGHTNESS = 0.7           # 0.1 .. 1.0 (kleuren worden gedimd, zeer donker = soms onzichtbaar)
-START_MODE = "life"        # "life" of "dashboard"
-BUTTON_PIN = board.A1      # externe knop: tussen deze pin en GND
+# ---------------------------------------------------------------- settings
+AUTO_ROTATE = True         # follow the accelerometer: turn the panel and the image turns with it
+# Fixed orientation, used when AUTO_ROTATE is off or the panel lies flat:
+PORTRAIT = True            # True = portrait (32 wide, 64 high), False = landscape (64x32)
+FLIP = True                # True if the image is upside down (True = board at the bottom)
+BRIGHTNESS = 0.7           # 0.1 .. 1.0 (colors are dimmed; very dark colors may disappear)
+START_MODE = "life"        # "life" or "dashboard"
+BUTTON_PIN = board.A1      # external button: between this pin and GND
 LONG_PRESS_MS = 800
 
-# Snelheden van Game of Life in ms per generatie (snelste eerst). Het bordje heeft
-# zelf ~170 ms nodig per generatie, dus 0 = zo snel als het kan.
+# Game of Life speeds in ms per generation (fastest first). The board itself needs
+# ~170 ms per generation, so 0 = as fast as it can.
 LIFE_SPEEDS_MS = (0, 300, 500, 800, 1200, 2000)
-LIFE_SPEED = 1             # startsnelheid: index in LIFE_SPEEDS_MS
-LIFE_MAX_GENS = None       # None = geen limiet: een wereld loopt tot hij echt vastloopt of zich herhaalt
+LIFE_SPEED = 1             # starting speed: index into LIFE_SPEEDS_MS
+LIFE_MAX_GENS = None       # None = no limit: a world runs until it is truly finished (repeats itself)
 
-# Volgorde van het dashboard. Elke "gif" speelt de volgende GIF: na elk scherm een GIF.
+# Dashboard order. Each "gif" plays the next GIF: a GIF after every screen.
 ORDER = ("clock", "gif", "air", "gif", "weather", "gif", "forecast", "gif", "world", "gif")
-# Seconden per scherm. Een GIF speelt minstens één keer helemaal, en maximaal 2x zo lang.
+# Seconds per screen. A GIF always plays at least once completely, and at most 2x this long.
 DURATIONS = {"clock": 20, "air": 10, "weather": 10, "forecast": 10, "world": 10, "gif": 10}
 
-# Tijdzones: (standaard UTC-offset in uren, zomertijdregel "EU" / "US" / "AU" / None)
-HOME_TZ = (1, "EU")        # Amsterdam: UTC+1, zomertijd volgens EU-regels
-WORLD_CLOCKS = (           # max. 4; namen van max. 8 letters passen staand het best
+# Timezones: (standard UTC offset in hours, DST rule "EU" / "US" / "AU" / None)
+HOME_TZ = (1, "EU")        # e.g. Amsterdam: UTC+1 with EU daylight saving time
+WORLD_CLOCKS = (           # max. 4; names of up to 8 letters fit best in portrait
     ("NEW YORK", -5, "US"),
-    ("LONDEN", 0, "EU"),
-    ("TOKIO", 9, None),
+    ("LONDON", 0, "EU"),
+    ("TOKYO", 9, None),
     ("SYDNEY", 10, "AU"),
 )
-AIR_GRAPH_MINUTES = 120    # hoeveel tijd de CO2-grafiek beslaat
-CO2_ALERT_PPM = 1200       # vanaf hier knippert er een rood puntje tijdens Game of Life
+AIR_GRAPH_MINUTES = 120    # time span of the CO2 graph
+CO2_ALERT_PPM = 1200       # above this, a red dot blinks during Game of Life
 # -------------------------------------------------------------------------
 
 from net import Net
@@ -57,7 +57,7 @@ orientation = Orientation() if AUTO_ROTATE else None
 rotation = orientation and orientation.current
 if rotation is None:
     rotation = (90 if PORTRAIT else 0) + (180 if FLIP else 0)
-print("Rotatie:", rotation)
+print("Rotation:", rotation)
 
 displayio.release_displays()
 matrix = rgbmatrix.RGBMatrix(
@@ -71,17 +71,17 @@ display = framebufferio.FramebufferDisplay(
 
 
 class Buttons:
-    """Vertaalt knoppen naar acties: 'switch', 'next', 'prev' en 'reset'.
+    """Turns button presses into actions: 'switch', 'next', 'prev' and 'reset'.
 
-    UP / DOWN (op het bordje): kort = 'next' / 'prev', lang = 'switch',
-    allebei tegelijk = 'reset'. Externe knop: kort = 'switch', lang = 'reset'.
+    UP / DOWN (on the board): short = 'next' / 'prev', long = 'switch',
+    both together = 'reset'. External button: short = 'switch', long = 'reset'.
     """
     EXTERNAL, UP, DOWN = 0, 1, 2
 
     def __init__(self, pins, long_ms):
         self.keys = keypad.Keys(pins, value_when_pressed=False, pull=True)
         self.long_ms = long_ms
-        self.down_since = {}  # knop -> tijdstip, of None als hij al iets gedaan heeft
+        self.down_since = {}  # button -> press time, or None once it has triggered an action
         self.event = keypad.Event()
 
     def poll(self):
@@ -95,7 +95,7 @@ class Buttons:
                     held[self.UP] = held[self.DOWN] = None
                     actions.append("reset")
             elif k in held:
-                if held.pop(k) is not None:  # kort ingedrukt
+                if held.pop(k) is not None:  # short press
                     actions.append({self.EXTERNAL: "switch", self.UP: "next",
                                     self.DOWN: "prev"}[k])
         now = ticks.ticks_ms()
@@ -107,28 +107,28 @@ class Buttons:
 
 
 def build_screens(life_speed):
-    """(Opnieuw) de schermen maken voor de huidige breedte/hoogte van het display."""
+    """(Re)build the screens for the current width/height of the display."""
     portrait = display.height > display.width
-    # Staande en liggende GIFs hebben elk een eigen map
-    gifs = "/gifs_staand" if portrait else "/gifs"
+    # Portrait and landscape GIFs each have their own folder
+    gifs = "/gifs_portrait" if portrait else "/gifs_landscape"
     dash = Dashboard(display, net, air, BRIGHTNESS, ORDER, DURATIONS, gifs, HOME_TZ, WORLD_CLOCKS)
     lf = Life(display, BRIGHTNESS, LIFE_SPEEDS_MS, life_speed, LIFE_MAX_GENS, air, CO2_ALERT_PPM)
     return dash, lf
 
 
 def rotate(new_rotation):
-    """Beeld meedraaien zonder herstart. Wifi, weer, tijd en CO2-grafiek blijven bewaard."""
+    """Rotate the image without a restart. WiFi, weather, time and the CO2 graph are kept."""
     global dashboard, life, mode
     was_life = mode is life
     old_portrait = display.height > display.width
     display.rotation = new_rotation
-    print("Gedraaid naar", new_rotation)
+    print("Rotated to", new_rotation)
     if (display.height > display.width) == old_portrait:
-        mode.enter()  # 180 graden: zelfde afmetingen, alles loopt gewoon door
+        mode.enter()  # 180 degrees: same size, everything simply continues
         return
-    # Staand <-> liggend: andere afmetingen, schermen opnieuw opbouwen
+    # Portrait <-> landscape: different size, rebuild the screens
     speed = life.speed
-    screen = dashboard.index  # op hetzelfde dashboardscherm verdergaan
+    screen = dashboard.index  # continue on the same dashboard screen
     dashboard.gifs.stop()
     display.root_group = None
     dashboard = life = mode = None
@@ -139,7 +139,7 @@ def rotate(new_rotation):
     mode = life if was_life else dashboard
     mode.enter()
     gc.collect()
-    print("Schermen opnieuw opgebouwd, vrij geheugen:", gc.mem_free())
+    print("Screens rebuilt, free memory:", gc.mem_free())
 
 
 net = Net()

@@ -1,16 +1,16 @@
-# orientation.py - bepaal met de ingebouwde accelerometer (LIS3DH) hoe het paneel hangt
+# orientation.py - use the built-in accelerometer (LIS3DH) to see how the panel is hanging
 import board
 import adafruit_ticks as ticks
 
-# Richting van de zwaartekracht -> schermrotatie. Gemeten: staand met het bordje onderaan = +x (270);
-# klopt een stand niet, wissel dan hier de getallen om.
+# Direction of gravity -> screen rotation. Measured: portrait with the board at the bottom = +x (270).
+# If an orientation is wrong, swap the numbers here.
 GRAVITY_TO_ROTATION = {"+x": 270, "-x": 90, "+y": 0, "-y": 180}
 CHECK_MS = 1000
-STABLE_CHECKS = 3  # zo vaak achter elkaar een nieuwe stand zien voordat we draaien
+STABLE_CHECKS = 3  # see a new orientation this many times in a row before rotating
 
 
 def _axis(x, y, z):
-    """Welke as wijst het meest naar beneden? None als het paneel plat ligt."""
+    """Which axis points down the most? None if the panel lies flat."""
     if abs(z) > max(abs(x), abs(y)):
         return None
     if abs(x) >= abs(y):
@@ -23,8 +23,8 @@ class Orientation:
         try:
             import adafruit_lis3dh
             self.lis = adafruit_lis3dh.LIS3DH_I2C(board.I2C(), address=0x19)
-        except Exception as e:  # noqa - zonder accelerometer: vaste stand uit code.py
-            print("Geen accelerometer:", e)
+        except Exception as e:  # noqa - no accelerometer: fixed orientation from code.py
+            print("No accelerometer:", e)
             self.lis = None
         self.current = self.rotation()
         self.pending = None
@@ -32,7 +32,7 @@ class Orientation:
         self.next_at = ticks.ticks_ms()
 
     def rotation(self):
-        """Huidige rotatie (0/90/180/270), of None als onbekend of plat."""
+        """Current rotation (0/90/180/270), or None if unknown or lying flat."""
         if self.lis is None:
             return None
         try:
@@ -43,7 +43,7 @@ class Orientation:
         return None if axis is None else GRAVITY_TO_ROTATION[axis]
 
     def changed(self):
-        """De nieuwe rotatie als het paneel een paar seconden anders hangt, anders None."""
+        """The new rotation once the panel has hung differently for a few seconds, else None."""
         now = ticks.ticks_ms()
         if self.lis is None or ticks.ticks_less(now, self.next_at):
             return None

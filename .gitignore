@@ -1,13 +1,13 @@
-# Persoonlijke instellingen (wifi-wachtwoord, locatie) - gebruik settings.toml.example
+# Personal settings (WiFi password, location) - use settings.toml.example
 CIRCUITPY/settings.toml
 
-# Eigen GIFs blijven lokaal; alleen de zelfgemaakte demo's gaan mee
-CIRCUITPY/gifs/*
-!CIRCUITPY/gifs/demo-*
-CIRCUITPY/gifs_staand/*
-!CIRCUITPY/gifs_staand/demo-*
+# Your own GIFs stay local; only the self-made demos are committed
+CIRCUITPY/gifs_landscape/*
+!CIRCUITPY/gifs_landscape/demo-*
+CIRCUITPY/gifs_portrait/*
+!CIRCUITPY/gifs_portrait/demo-*
 
-# Lokale bestanden
+# Local files
 backup-*/
 preview_*.png
 __pycache__/
